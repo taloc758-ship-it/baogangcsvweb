@@ -183,7 +183,12 @@ async function saveFile() {
   });
   state.encoding = result.encoding || state.encoding;
   syncMeta();
-  setStatus(`已保存 ${state.path}`);
+  if (result.changed) {
+    const logTip = result.logPath ? `，日志：${result.logPath}` : "";
+    setStatus(`已保存 ${state.path}${logTip}`);
+  } else {
+    setStatus(`已保存 ${state.path}，但没有内容变化，所以没有新日志`);
+  }
 }
 
 function ensureWidth() {
