@@ -1,0 +1,58 @@
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio cache files
+.vs/
+*.suo
+
+# Build outputs
+*.ilk
+*.obj
+*.pdb
+*.log
+*.tlog
+
+# NuGet packages
+packages/
+
+# User-specific files
+*.user
+ClientUI/nul
+Lib/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+.venv/
+venv/
+env/
+
+# Local run artifacts
+.server.pid
+.server.port
+server.out.log
+server.err.log
+*.tmp
+
+# Packaged bundles
+offline_bundle/
+offline_bundle.zip
+portable_bundle/
+portable_bundle.zip
+
+# Archives
+*.zip
+*.rar
