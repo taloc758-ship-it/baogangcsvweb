@@ -47,6 +47,9 @@ server.out.log
 server.err.log
 *.tmp
 logs/
+build/
+dist/
+*.spec
 
 # Packaged bundles
 offline_bundle/

@@ -23,9 +23,44 @@ def get_runtime_dir() -> Path:
 
 BASE_DIR = get_runtime_dir()
 DEFAULT_CSV_ROOT = Path(r"D:\workspace\code\bin\工艺规程文件")
-CSV_ROOT = Path(os.environ.get("CSVWEB_CSV_ROOT", str(DEFAULT_CSV_ROOT))).resolve()
-STATIC_DIR = Path(os.environ.get("CSVWEB_STATIC_DIR", str(BASE_DIR / "static"))).resolve()
 LOG_DIR = BASE_DIR / "logs"
+RESOURCE_DIR = Path(getattr(sys, "_MEIPASS", BASE_DIR)).resolve()
+
+
+def get_static_dir() -> Path:
+    override = os.environ.get("CSVWEB_STATIC_DIR")
+    if override:
+        return Path(override).resolve()
+
+    local_static = BASE_DIR / "static"
+    if local_static.exists():
+        return local_static.resolve()
+
+    bundled_static = RESOURCE_DIR / "static"
+    if bundled_static.exists():
+        return bundled_static.resolve()
+
+    return local_static.resolve()
+
+
+def get_csv_root() -> Path:
+    override = os.environ.get("CSVWEB_CSV_ROOT")
+    if override:
+        return Path(override).resolve()
+
+    external_root = BASE_DIR / "工艺规程文件"
+    if external_root.exists():
+        return external_root.resolve()
+
+    bundled_root = RESOURCE_DIR / "工艺规程文件"
+    if bundled_root.exists():
+        return bundled_root.resolve()
+
+    return DEFAULT_CSV_ROOT.resolve()
+
+
+CSV_ROOT = get_csv_root()
+STATIC_DIR = get_static_dir()
 
 app = FastAPI(title="CSV Web Editor", version="1.0.0")
 app.add_middleware(
