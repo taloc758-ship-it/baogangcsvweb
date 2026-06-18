@@ -9,7 +9,7 @@ from datetime import datetime
 from difflib import SequenceMatcher
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -48,14 +48,6 @@ def get_csv_root() -> Path:
     if override:
         return Path(override).resolve()
 
-    external_root = BASE_DIR / "工艺规程文件"
-    if external_root.exists():
-        return external_root.resolve()
-
-    bundled_root = RESOURCE_DIR / "工艺规程文件"
-    if bundled_root.exists():
-        return bundled_root.resolve()
-
     return DEFAULT_CSV_ROOT.resolve()
 
 
@@ -82,7 +74,26 @@ class SavePayload(BaseModel):
     delimiter: str = ","
 
 
+@app.middleware("http")
+async def disable_cache_for_ui(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
+def ensure_csv_root_exists() -> Path:
+    if not CSV_ROOT.exists():
+        raise HTTPException(status_code=500, detail=f"CSV目录不存在：{CSV_ROOT}")
+    if not CSV_ROOT.is_dir():
+        raise HTTPException(status_code=500, detail=f"CSV路径不是文件夹：{CSV_ROOT}")
+    return CSV_ROOT
+
+
 def resolve_csv_path(rel_path: str) -> Path:
+    ensure_csv_root_exists()
     if not rel_path:
         raise HTTPException(status_code=400, detail="path 不能为空")
 
@@ -398,6 +409,34 @@ def append_change_log(change_record: dict) -> str | None:
     return log_path.name
 
 
+def get_log_dates() -> list[str]:
+    if not LOG_DIR.exists():
+        return []
+    dates = []
+    for path in sorted(LOG_DIR.glob("csv-change-*.log"), reverse=True):
+        stem = path.stem
+        if not stem.startswith("csv-change-"):
+            continue
+        dates.append(stem.removeprefix("csv-change-"))
+    return dates
+
+
+def resolve_log_path(date_text: str) -> Path:
+    if not date_text:
+        raise HTTPException(status_code=400, detail="date 不能为空")
+    try:
+        datetime.strptime(date_text, "%Y-%m-%d")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="date 格式必须是 YYYY-MM-DD") from exc
+
+    path = (LOG_DIR / f"csv-change-{date_text}.log").resolve()
+    if path.parent != LOG_DIR.resolve():
+        raise HTTPException(status_code=400, detail="非法日志路径")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"未找到 {date_text} 的日志")
+    return path
+
+
 @app.get("/", response_class=FileResponse)
 def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
@@ -405,18 +444,22 @@ def index() -> FileResponse:
 
 @app.get("/api/health")
 def health() -> dict:
+    csv_root_exists = CSV_ROOT.exists() and CSV_ROOT.is_dir()
     return {
         "ok": True,
         "runtimeDir": str(BASE_DIR),
         "csvRoot": str(CSV_ROOT),
+        "csvRootExists": csv_root_exists,
+        "csvRootError": "" if csv_root_exists else f"CSV目录不存在：{CSV_ROOT}",
         "logDir": str(LOG_DIR),
     }
 
 
 @app.get("/api/files")
 def list_files() -> dict:
+    root = ensure_csv_root_exists()
     files = []
-    for path in sorted(CSV_ROOT.rglob("*.csv")):
+    for path in sorted(root.rglob("*.csv")):
         try:
             meta = read_csv_table(path)
             files.append(
@@ -434,7 +477,27 @@ def list_files() -> dict:
                     "error": str(exc),
                 }
             )
-    return {"root": CSV_ROOT.as_posix(), "files": files}
+    return {"root": root.as_posix(), "files": files}
+
+
+@app.get("/api/logs")
+def list_logs() -> dict:
+    dates = get_log_dates()
+    return {
+        "logDir": str(LOG_DIR),
+        "dates": dates,
+        "latest": dates[0] if dates else "",
+    }
+
+
+@app.get("/api/log")
+def get_log(date: str = Query(..., description="日志日期，格式 YYYY-MM-DD")) -> dict:
+    log_path = resolve_log_path(date)
+    return {
+        "date": date,
+        "path": str(log_path),
+        "content": log_path.read_text(encoding="utf-8"),
+    }
 
 
 @app.get("/api/file")

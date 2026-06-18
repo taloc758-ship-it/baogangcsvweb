@@ -5,6 +5,9 @@ const state = {
   headers: [],
   rows: [],
   editingRowIndex: null,
+  logDates: [],
+  selectedLogDate: "",
+  showLogs: false,
 };
 
 const els = {};
@@ -12,6 +15,12 @@ const els = {};
 function setStatus(message, kind = "") {
   els.status.textContent = message;
   els.status.dataset.kind = kind;
+}
+
+function syncLogPanelVisibility() {
+  els.logPanel.classList.toggle("hidden", !state.showLogs);
+  els.tablePanel.classList.toggle("hidden", state.showLogs);
+  els.toggleLogs.textContent = state.showLogs ? "查看表格" : "查看日志";
 }
 
 function ensureStateShape() {
@@ -108,8 +117,15 @@ async function api(path, options = {}) {
     ...options,
   });
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || response.statusText);
+    let message = response.statusText;
+    try {
+      const data = await response.json();
+      message = data.detail || JSON.stringify(data);
+    } catch {
+      const text = await response.text();
+      message = text || response.statusText;
+    }
+    throw new Error(message);
   }
   return response.json();
 }
@@ -160,6 +176,63 @@ async function loadFiles(selectPath = "") {
   await loadFile(path);
 }
 
+function renderLogViewer(content = "", hint = "") {
+  els.logContent.textContent = content || hint || "暂无日志";
+}
+
+function syncLogDateInput() {
+  if (!state.logDates.length) {
+    els.logDate.value = "";
+    els.logDate.min = "";
+    els.logDate.max = "";
+    els.logDate.disabled = true;
+    return;
+  }
+
+  els.logDate.disabled = false;
+  const datesAscending = [...state.logDates].sort();
+  els.logDate.min = datesAscending[0];
+  els.logDate.max = datesAscending[datesAscending.length - 1];
+  els.logDate.value = state.selectedLogDate || state.logDates[0];
+}
+
+async function loadLogDates(preferredDate = "") {
+  const data = await api("/api/logs");
+  state.logDates = data.dates || [];
+  state.selectedLogDate = preferredDate && state.logDates.includes(preferredDate)
+    ? preferredDate
+    : (data.latest || state.logDates[0] || "");
+  syncLogDateInput();
+
+  if (!state.selectedLogDate) {
+    renderLogViewer("", "当前还没有日志");
+    return;
+  }
+  await loadLog(state.selectedLogDate);
+}
+
+async function loadLog(dateText) {
+  if (!dateText) {
+    renderLogViewer("", "请选择日志日期");
+    return;
+  }
+  state.selectedLogDate = dateText;
+  els.logDate.value = dateText;
+  renderLogViewer("", `正在读取 ${dateText} 日志...`);
+  const data = await api(`/api/log?date=${encodeURIComponent(dateText)}`);
+  renderLogViewer(data.content || "", "该日期日志为空");
+}
+
+function getLogDateFromFileName(logFileName) {
+  const match = /^csv-change-(\d{4}-\d{2}-\d{2})\.log$/.exec(logFileName || "");
+  return match ? match[1] : "";
+}
+
+function toggleLogPanel(forceValue) {
+  state.showLogs = typeof forceValue === "boolean" ? forceValue : !state.showLogs;
+  syncLogPanelVisibility();
+}
+
 async function loadFile(path) {
   if (!path) return;
   setStatus(`正在加载 ${path} ...`);
@@ -186,6 +259,7 @@ async function saveFile() {
   if (result.changed) {
     const logTip = result.logPath ? `，日志：${result.logPath}` : "";
     setStatus(`已保存 ${state.path}${logTip}`);
+    await loadLogDates(getLogDateFromFileName(result.logFile));
   } else {
     setStatus(`已保存 ${state.path}，但没有内容变化，所以没有新日志`);
   }
@@ -264,6 +338,25 @@ function bindEvents() {
   els.reloadFile.addEventListener("click", async () => {
     await loadFile(state.path || els.fileSelect.value);
   });
+  els.toggleLogs.addEventListener("click", () => {
+    toggleLogPanel();
+  });
+  els.refreshLogs.addEventListener("click", async () => {
+    try {
+      await loadLogDates(state.selectedLogDate);
+    } catch (err) {
+      renderLogViewer("", `读取日志失败：${err.message}`);
+      setStatus(`读取日志失败：${err.message}`, "error");
+    }
+  });
+  els.logDate.addEventListener("change", async () => {
+    try {
+      await loadLog(els.logDate.value);
+    } catch (err) {
+      renderLogViewer("", `读取日志失败：${err.message}`);
+      setStatus(`读取日志失败：${err.message}`, "error");
+    }
+  });
 
   els.addRow.addEventListener("click", addRow);
   els.save.addEventListener("click", async () => {
@@ -314,8 +407,14 @@ async function init() {
   els.rowCount = document.getElementById("row-count");
   els.colCount = document.getElementById("col-count");
   els.filePath = document.getElementById("file-path");
+  els.toggleLogs = document.getElementById("toggle-logs");
+  els.logPanel = document.getElementById("log-panel");
+  els.tablePanel = document.getElementById("table-panel");
   els.table = document.getElementById("csv-table");
   els.emptyState = document.getElementById("empty-state");
+  els.logDate = document.getElementById("log-date");
+  els.refreshLogs = document.getElementById("refresh-logs");
+  els.logContent = document.getElementById("log-content");
   els.rowModal = document.getElementById("row-modal");
   els.rowForm = document.getElementById("row-form");
   els.rowSubtitle = document.getElementById("row-modal-subtitle");
@@ -326,11 +425,12 @@ async function init() {
   els.insertRow = document.getElementById("insert-row");
   els.deleteRow = document.getElementById("delete-row");
 
+  syncLogPanelVisibility();
   bindEvents();
-  try {
-    await loadFiles();
-  } catch (err) {
-    setStatus(`初始化失败：${err.message}`, "error");
+  const results = await Promise.allSettled([loadFiles(), loadLogDates()]);
+  const failed = results.find((item) => item.status === "rejected");
+  if (failed) {
+    setStatus(`初始化失败：${failed.reason.message}`, "error");
   }
 }
 

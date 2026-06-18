@@ -23,7 +23,6 @@ pyinstaller `
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 Copy-Item app.py $OutputDir -Force
 Copy-Item static $OutputDir -Recurse -Force
-Copy-Item 工艺规程文件 $OutputDir -Recurse -Force
 
 if (Test-Path "build") {
     Remove-Item "build" -Recurse -Force

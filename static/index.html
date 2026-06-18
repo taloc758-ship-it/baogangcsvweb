@@ -25,6 +25,7 @@
         <div class="actions">
           <button id="refresh-files" type="button">刷新文件</button>
           <button id="reload-file" type="button">重新载入</button>
+          <button id="toggle-logs" type="button">查看日志</button>
           <button id="add-row" type="button" class="secondary">新增行</button>
           <button id="save" class="primary" type="button">保存</button>
         </div>
@@ -37,7 +38,7 @@
         <div>路径：<span id="file-path">-</span></div>
       </section>
 
-      <section class="panel table-panel">
+      <section id="table-panel" class="panel table-panel">
         <div id="empty-state" class="empty hidden">
           <div class="empty-title">当前没有数据</div>
           <div class="empty-text">点击下方按钮新增第一行，或者先切换到其他 CSV 文件。</div>
@@ -46,6 +47,23 @@
         <div class="table-wrap">
           <table id="csv-table"></table>
         </div>
+      </section>
+
+      <section id="log-panel" class="panel log-panel hidden">
+        <div class="section-head">
+          <div>
+            <div class="section-title">修改日志</div>
+            <div class="section-subtitle">按日期查看每天的 CSV 修改记录</div>
+          </div>
+          <div class="actions">
+            <label class="log-filter">
+              日期
+              <input id="log-date" type="date" />
+            </label>
+            <button id="refresh-logs" type="button">刷新日志</button>
+          </div>
+        </div>
+        <pre id="log-content" class="log-content">暂无日志</pre>
       </section>
     </div>
 
